@@ -12,6 +12,7 @@ import {IJoeRouter} from "./interfaces/IJoeRouter.sol";
 import {IPlainPool, ILendingPool, IMetaPool} from "./interfaces/ICurvePool.sol";
 import {IYetiVaultToken} from "./interfaces/IYetiVaultToken.sol";
 import {IWAVAX} from "./interfaces/IWAVAX.sol";
+import {IPlatypusPool} from "./interfaces/IPlatypusPool.sol";
 
 import {OwnableUpgradeable} from "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -498,6 +499,31 @@ contract Router is OwnableUpgradeable {
     }
 
 
+    //////////////////////////////////////////////////////////////////////////////////
+    // #9 Platypus pool
+    //////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * @dev Swaps through Platypus pool. Routes the same through secondary or main pools. 
+     * 
+     */
+    function swapPlatypus(
+        address _tokenIn,
+        address _tokenOut,
+        address _platypusPool,
+        uint256 _amountIn
+    ) internal returns (uint256) {
+        IPlatypusPool(_platypusPool).swap(
+            _tokenIn,
+            _tokenOut,
+            _amountIn,
+            0,
+            address(this),
+            block.timestamp
+        );
+    }
+
+
     // Takes the address of the token _in, and gives a certain amount of token out. 
     // Calls correct swap functions sequentially based on the route which is defined by the 
     // routes array. 
@@ -584,6 +610,14 @@ contract Router is OwnableUpgradeable {
                 // Is Yeti Vault Token
                 _amount = swapYetiVaultToken(
                     path[i].tokenIn,
+                    path[i].protocolSwapAddress,
+                    _amount
+                );
+            } else if (path[i].nodeType == 9) {
+                // Is Platypus pool 
+                _amount = swapPlatypus(
+                    path[i].tokenIn,
+                    path[i].tokenOut,
                     path[i].protocolSwapAddress,
                     _amount
                 );
