@@ -51,7 +51,12 @@ forge build
 **Testing**
 ```
 cd contracts
-forge test --fork-url="https://api.avax.network/ext/bc/C/rpc" --fork-block-number=12435550
+forge test --fork-url="https://api.avax.network/ext/bc/C/rpc" --fork-block-number=14578166
+```
+
+Match test case
+```
+--match-test testAltPoolPlatypusSwap
 ```
 
 ## License
