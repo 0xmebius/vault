@@ -25,7 +25,9 @@ contract TestLever is DSTest {
     Vm public constant vm = Vm(HEVM_ADDRESS);
 
     IERC20 constant USDC = IERC20(0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664); //USDC
+    IERC20 constant USDC_Native = IERC20(0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E); //USDC Native
     address constant usdcHolder = 0xCe2CC46682E9C6D5f174aF598fb4931a9c0bE68e;
+    address constant usdc_nativeHolder = 0x42d6Ce661bB2e5F5cc639E7BEFE74Ff9Fd649541;
     IERC20 constant WAVAX = IERC20(0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7); //WAVAX
     address constant wavaxHolder = 0xBBff2A8ec8D702E61faAcCF7cf705968BB6a5baB; 
 
@@ -50,6 +52,9 @@ contract TestLever is DSTest {
         vm.stopPrank();
         vm.startPrank(usdcHolder);
         USDC.transfer(address(this), USDC.balanceOf(usdcHolder));
+        vm.stopPrank();
+        vm.startPrank(usdc_nativeHolder);
+        USDC_Native.transfer(address(this), USDC_Native.balanceOf(usdc_nativeHolder) / 10000);
         vm.stopPrank();
     }
 
@@ -272,5 +277,43 @@ contract TestLever is DSTest {
         assertTrue(postB-preB == amtOut);
         assertTrue(postB > preB);
         assertTrue(preA > postA);
+    }
+
+    // Helper function to test a platypus swap through a specific pool
+    function testPlatypusSwap(address pool, address _in, address _out) internal {
+        IERC20 tokenIn = IERC20(_in);
+        IERC20 tokenOut = IERC20(_out);
+        uint256 amtIn = tokenIn.balanceOf(address(this));
+        lever.setApprovals(address(tokenIn), pool, MAX_INT);
+        Router.Node[] memory _path = new Router.Node[](1);
+        _path[0] = Router.Node(pool, 9, address(tokenIn), _out, 0, 0, 0);
+        lever.setRoute(address(tokenIn), _out, _path);
+
+        // Perform swap
+        uint256 preA = tokenIn.balanceOf(address(this));
+        uint256 preB = tokenOut.balanceOf(address(this));
+        tokenIn.transfer(address(lever), amtIn);
+        uint amtOut = lever.unRoute(address(this), address(tokenIn), _out, amtIn, 0);
+        uint256 postA = tokenIn.balanceOf(address(this));
+        uint256 postB = tokenOut.balanceOf(address(this));
+        assertTrue(postB-preB == amtOut);
+        assertTrue(postB > preB);
+        assertTrue(preA > postA);
+    }
+
+    // Swap USDC to YUSD through alt pool
+    function testAltPoolPlatypusSwap() public {
+        address platypusYUSDPool = 0xC828D995C686AaBA78A4aC89dfc8eC0Ff4C5be83;
+        address _in = 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E; // usdc native
+        address _out = 0x111111111111ed1D73f860F57b2798b683f2d325; // yusd
+        testPlatypusSwap(platypusYUSDPool, _in, _out);
+    }
+
+    // Swap USDC to USDt through main pool
+    function testMainPoolPlatypusSwap() public {
+        address platypusMainPool = 0x66357dCaCe80431aee0A7507e2E361B7e2402370;
+        address _in = 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E; // usdc native
+        address _out = 0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7; // usdt native
+        testPlatypusSwap(platypusMainPool, _in, _out);
     }
 }
