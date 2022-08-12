@@ -185,7 +185,7 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         // Amount of YUSD burned
         uint256 YUSDBurned = _YUSDAmount * swapFeeCompliment / SWAP_FEE_DENOMINATOR;
         USDCAmount = YUSDBurned / DECIMAL_CONVERSION;
-        require(YUSDBurned > YUSDContractDebt, "Burning more than the contract has in debt");
+        require(YUSDBurned < YUSDContractDebt, "Burning more than the contract has in debt");
 
         // Burn the YUSD
         burner.burn(address(this), YUSDBurned);

@@ -11,6 +11,14 @@ import "./Utils.sol";
 
 import "src/testContracts/TestStrategyDummy.sol";
 
+interface IYetiController {
+    function addValidYUSDMinter(address minter) external;
+}
+
+interface TransparentUpgradeableProxy {
+    function upgradeTo(address newImplementation) external;
+}
+
 
 contract PSMTest is DSTest {
 
@@ -35,35 +43,43 @@ contract PSMTest is DSTest {
 
     // Can add valid minter (Later will be timelock)
     address constant treasury = 0xf572455BE31BF54Cc7D0c6D69B60813171bb7b12;
+    address constant PROXY_ADMIN = 0x35D6bA8f18cEE7578f94e13B338D989806800a7a;
     // through controller
     IYetiController constant yeti_controller = IYetiController(0xcCCCcCccCCCc053fD8D1fF275Da4183c2954dBe3);
+    address constant TMR = 0x00000000000d9c2f60d8e82F2d1C2bed5008DD7d;
 
     function setUp() public {
         strategy = new TestStrategyDummy();
         psm = new PSM();
-        // burner = new TestBurner(); todo
-        // or upgrade TMR right here... 
+
+        // Upgrade TroveManagerRedemptions to a version with burn, and 
+        // add validBurner access control to YetiController. 
+        // Upgrade the contracts to the new version
+        // temp addresses for pending upgrade
+        address YC_new = 0xf7DA8a8310aB182B52E8082C3d3c256d12d6Cd66;
+        address TMR_new = 0xda67834515e4eE0C2d18f3b81DeBef2CF17C9608;
+
+        vm.startPrank(PROXY_ADMIN);
+        TransparentUpgradeableProxy(address(yeti_controller)).upgradeTo(YC_new);
+        TransparentUpgradeableProxy(TMR).upgradeTo(TMR_new);
+
+        vm.stopPrank();
 
         // Will be owner of the deployed PSM contract
         vm.startPrank(treasury);
 
         strategy.initialize(address(psm));
         psm.initialize(
-            YUSD_HOLDER, // temp -- should be burner
+            TMR,
             address(strategy),
             FEE_RECIPIENT,
             1000000e18, // 10m
             100 // 1% fee
         );
 
-        // Add PSM as valid minter
+        // Add PSM as valid minter / burner
         yeti_controller.addValidYUSDMinter(address(psm));
         vm.stopPrank();
-
-        // and as valid burner todo
-
-        
-
     }
 
 
@@ -191,7 +207,7 @@ contract PSMTest is DSTest {
 
 
     // Basic PSM YUSD redeem test 
-    function atestRedeemBasic() public {
+    function testRedeemBasic() public {
         // From USDC holder, mint in PSM
         uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
@@ -232,14 +248,14 @@ contract PSMTest is DSTest {
         uint yusdHolderYUSDAfter = YUSD.balanceOf(YUSD_HOLDER);
         assertTrue(yusdHolderYUSDAfter == yusdHolderYUSDBefore - REDEEM_AMOUNT_YUSD, "usdc holder balance didn't decrease");
         uint YUSDContractDebt = psm.YUSDContractDebt();
-        // uint EXPECTED_TOTAL_CONTRACT_DEBT_AFTER_REDEEM = 1000e18 - 99e18; stack too deep
+        // uint EXPECTED_TOTAL_CONTRACT_DEBT_AFTER_REDEEM = 1000e18 * 99 / 100 - 99e18; stack too deep
         // Original mint amount - redeem amount, in USDC
-        assertTrue(YUSDContractDebt == 1000e18 - 99e18);
+        assertTrue(YUSDContractDebt == 1000e18 * 99 / 100 - EXPECTED_YUSD_BURNED, "Contract debt doesn't line up");
     }
 
 
     // Change fee PSM YUSD Redeem test
-    function atestRedeemBasicChangeFee() public {
+    function testRedeemBasicChangeFee() public {
         // From USDC holder, mint in PSM
         // uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
@@ -287,15 +303,14 @@ contract PSMTest is DSTest {
         uint yusdHolderYUSDAfter = YUSD.balanceOf(YUSD_HOLDER);
         assertTrue(yusdHolderYUSDAfter == yusdHolderYUSDBefore - REDEEM_AMOUNT_YUSD, "usdc holder balance didn't decrease");
         uint YUSDContractDebt = psm.YUSDContractDebt();
-        // uint EXPECTED_TOTAL_CONTRACT_DEBT_AFTER_REDEEM = 1000e18 - 98e18; stack too deep
+        // uint EXPECTED_TOTAL_CONTRACT_DEBT_AFTER_REDEEM = 1000e18 * 99 / 100 - 98e18; stack too deep
         // Original mint amount - redeem amount, in USDC
-        assertTrue(YUSDContractDebt == 1000e18 - 98e18);
-
+        assertTrue(YUSDContractDebt == 1000e18 * 99 / 100 - 98e18, "Contract debt doesn't line up");
     }
 
 
     // YUSD Debt limit + redeem to bring it under limit test
-    function atestRedeemYUSDDebtLimit() public {
+    function testRedeemYUSDDebtLimit() public {
         // From USDC holder, mint in PSM
         uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
@@ -333,7 +348,7 @@ contract PSMTest is DSTest {
 
 
     // Redeem over limit test, more than the amount that the contract has in debt
-    function atestRedeemOverLimit() public {
+    function testRedeemOverLimit() public {
         // From USDC holder, mint in PSM
         uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
@@ -352,7 +367,7 @@ contract PSMTest is DSTest {
 
 
     // Redeeming to bring it under the debt limit allows another mint to happen. 
-    function atestRedeemDebtLimitChange() public {
+    function testRedeemDebtLimitChange() public {
         // From USDC holder, mint in PSM
         uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
@@ -384,12 +399,16 @@ contract PSMTest is DSTest {
     }
 
     // Test redeem paused
-    function atestRedeemPaused() public {
+    function testRedeemPaused() public {
         // From USDC holder, mint in PSM
         uint MINT_AMOUNT_USDC = 1000e6;
         vm.startPrank(USDC_HOLDER);
         USDC.approve(address(psm), MAX_UINT);
         psm.mintYUSD(MINT_AMOUNT_USDC, MINT_RECIPIENT);
+        vm.stopPrank();
+
+        vm.startPrank(treasury);
+        psm.toggleRedeemPaused(true);
         vm.stopPrank();
 
         // Attempt to redeem 500, should fail since it is paused
