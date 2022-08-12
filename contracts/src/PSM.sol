@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
@@ -12,6 +12,38 @@ import {IPSM} from "./interfaces/IPSM.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IBurner} from "./interfaces/IBurner.sol";
 import {IYUSDToken} from "./interfaces/IYUSDToken.sol";
+
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&   ,.@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@&&&.,,      ,,**.&&&&&@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@,               ..,,,,,,,,,&@@@@@@@@@@
+// @@@@@@,,,,,,&@@@@@@@@&                       ,,,,,&@@@@@@@@@
+// @@@&,,,,,,,,@@@@@@@@@                        ,,,,,*@@@/@@@@@
+// @@,*,*,*,*#,,*,&@@@@@   $$          $$       *,,,  ***&@@@@@
+// @&***********(@@@@@@&   $$          $$       ,,,%&. & %@@@@@
+// @(*****&**     &@@@@#                        *,,%  ,#%@*&@@@
+// @... &             &                         **,,*&,(@*,*,&@
+// @&,,.              &                         *,*       **,,@
+// @@@,,,.            *                         **         ,*,,
+// @@@@@,,,...   .,,,,&                        .,%          *,*
+// @@@@@@@&/,,,,,,,,,,,,&,,,,,.         .,,,,,,,,.           *,
+// @@@@@@@@@@@@&&@(,,,,,(@&&@@&&&&&%&&&&&%%%&,,,&            .(
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&,,,,,,,,,,,,,,&             &
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@/,,,,,,,,,,,,&             &
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@/            &             &
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&              &             &
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&      ,,,@@@&  &  &&  .&( &#%
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&&&%#**@@@&*&*******,,,,,**
+//
+//  $$\     $$\          $$\     $$\       $$$$$$$$\ $$\                                                   
+//  \$$\   $$  |         $$ |    \__|      $$  _____|\__|                                                  
+//   \$$\ $$  /$$$$$$\ $$$$$$\   $$\       $$ |      $$\ $$$$$$$\   $$$$$$\  $$$$$$$\   $$$$$$$\  $$$$$$\  
+//    \$$$$  /$$  __$$\\_$$  _|  $$ |      $$$$$\    $$ |$$  __$$\  \____$$\ $$  __$$\ $$  _____|$$  __$$\ 
+//     \$$  / $$$$$$$$ | $$ |    $$ |      $$  __|   $$ |$$ |  $$ | $$$$$$$ |$$ |  $$ |$$ /      $$$$$$$$ |
+//      $$ |  $$   ____| $$ |$$\ $$ |      $$ |      $$ |$$ |  $$ |$$  __$$ |$$ |  $$ |$$ |      $$   ____|
+//      $$ |  \$$$$$$$\  \$$$$  |$$ |      $$ |      $$ |$$ |  $$ |\$$$$$$$ |$$ |  $$ |\$$$$$$$\ \$$$$$$$\ 
+//      \__|   \_______|  \____/ \__|      \__|      \__|\__|  \__| \_______|\__|  \__| \_______| \_______|
 
 /** 
  * @notice PSM is a contract meant for swapping USDC for YUSD after taking a small fee. It will deposit
@@ -45,8 +77,10 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
     /// Conversion between USDC and YUSD, since USDC is 6 decimals, and YUSD is 18.
     uint256 private constant DECIMAL_CONVERSION = 1e12;
 
+    /// Contract through which to burn YUSD
     IBurner public burner;
 
+    /// Receives fees from mint/redeem and from harvesting
     address public feeRecipient;
 
     /// Strategy that deposits the USDC to earn additional yield or put it to use. 
@@ -126,6 +160,9 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
     /** 
      * @notice Send USDC to receive YUSD in return, at a 1 to 1 ratio minus the fee. Will increase debt of the contract by 
      * that amount, if possible (lower than cap). Deposits into the strategy. 
+     * @param _USDCAmount The amount of USDC the user would like to mint YUSD with. Will be in terms of 10**6 decimals
+     * @param _recipient Intended recipient for YUSD minted
+     * @return YUSDAmount The amount of YUSD the recipient receives back after the fee. Will be in terms of 10**18 decimals
      */
     function mintYUSD(uint256 _USDCAmount, address _recipient) external override nonReentrant returns (uint256 YUSDAmount) {
         require(_USDCAmount > 0, "0 mint not allowed");
@@ -168,6 +205,9 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
      * @notice Send YUSD to receive USDC in return, at a 1 to 1 ratio minus the fee. Will decrease debt of the contract by 
      * that amount, if possible (if less than 0 then just reduce to 0). Burns the YUSD.
      * Receives the correct amount of USDC from the Strategy when it is redeemed. 
+     * @param _YUSDAmount The amount of YUSD the user would like to redeem for USDC. Will be in terms of 10**18 decimals
+     * @param _recipient Intended recipient for USDC returned
+     * @return USDCAmount The amount of USDC the recipient receives back after the fee. Will be in terms of 10**6 decimals
      */
     function redeemYUSD(uint256 _YUSDAmount, address _recipient) external override nonReentrant returns (uint256 USDCAmount) {
         require(!redeemPaused, "Redeem paused");
@@ -219,7 +259,9 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
     /// Admin parameter functions
     /// ===========================================
 
-    // Sets new swap fee
+    /** 
+     * @notice Sets new swap fee
+     */
     function setFee(uint256 _newSwapFee) external override onlyOwner {
         require(_newSwapFee <= SWAP_FEE_DENOMINATOR, "Swap fee invalid");
         swapFee = _newSwapFee;
@@ -227,27 +269,35 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         emit NewFeeSet(_newSwapFee);
     }
 
-    // Sets new YUSD Debt limit
-    // Set to 0 to stop any new minting
+    /** 
+     * @notice Sets new YUSD Debt limit
+     *  Can be set to 0 to stop any new minting
+     */
     function setDebtLimit(uint256 _newDebtLimit) external override onlyOwner {
         YUSDDebtLimit = _newDebtLimit;
         emit NewDebtLimitSet(_newDebtLimit);
     }
 
-    // Sets whether redeeming is allowed or not
+    /**
+     * @notice Sets whether redeeming is allowed or not
+     */
     function toggleRedeemPaused(bool _paused) external override onlyOwner {
         redeemPaused = _paused;
         emit RedeemPauseToggle(_paused);
     }
 
-    // Sets fee recipient which will get a certain swapFee per swap
+    /**
+     * @notice Sets fee recipient which will get a certain swapFee per swap
+     */
     function setFeeRecipient(address _newFeeRecipient) external override onlyOwner {
         require(_newFeeRecipient != address(0), "Nonzero address recipient");
         feeRecipient = _newFeeRecipient;
         emit NewFeeRecipientSet(_newFeeRecipient);
     }
 
-    // Sets new strategy for USDC utilization
+    /** 
+     * @notice Sets new strategy for USDC utilization
+     */
     function setStrategy(address _newStrategy) external override onlyOwner {
         require(OwnableUpgradeable(_newStrategy).owner() == address(this), "Not initialized or wrong owner of strategy");
 
@@ -267,6 +317,7 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
     /** 
      * @notice Aligns tracked debt with USDC value. Mints surplus to fee recipient to match YUSD
      * and USDC holdings
+     * @return harvestAmount : The amount in YUSD that is minted to the fee recipient based on the discrepancy
      */
     function harvest() external returns (uint256 harvestAmount) {
         // Total holdings of yield contract, in 1e18 (YUSD)
