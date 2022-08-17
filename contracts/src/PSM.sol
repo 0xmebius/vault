@@ -67,8 +67,7 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
     /// State variables, events, and initializer
     /// ===========================================
 
-    uint256 internal constant MAX_UINT =
-        115792089237316195423570985008687907853269984665640564039457584007913129639935;
+    uint256 internal constant MAX_UINT = type(uint).max;
 
     ERC20 public constant USDC = ERC20(0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E);
     ERC20 public constant YUSDERC20 = ERC20(0x111111111111ed1D73f860F57b2798b683f2d325);
@@ -104,6 +103,8 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
 
     /// basis points
     uint256 private constant SWAP_FEE_DENOMINATOR = 10000;
+
+    uint256 private constant MAX_SWAP_FEE = 500;
 
     event YUSDMinted(uint256 YUSDAmount, address minter, address recipient);
 
@@ -145,7 +146,7 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         YUSDDebtLimit = _limit;
         emit NewDebtLimitSet(_limit);
 
-        require(_swapFee <= SWAP_FEE_DENOMINATOR, "Swap fee invalid");
+        require(_swapFee <= MAX_SWAP_FEE, "Swap fee invalid");
         swapFee = _swapFee;
         swapFeeCompliment = SWAP_FEE_DENOMINATOR - _swapFee;
         emit NewFeeSet(_swapFee);
@@ -178,10 +179,11 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         // Amount of YUSD that will be minted, and amount of USDC actually given to this contract
         uint256 USDCAmountToDeposit = _USDCAmount * swapFeeCompliment / SWAP_FEE_DENOMINATOR;
         YUSDAmount = USDCAmountToDeposit * DECIMAL_CONVERSION;
-        require(YUSDAmount + YUSDContractDebt < YUSDDebtLimit, "Cannot mint more than PSM Debt limit");
+        uint256 newDebtAmount = YUSDAmount + YUSDContractDebt;
+        require(newDebtAmount <= YUSDDebtLimit, "Cannot mint more than PSM Debt limit");
 
         // Send fee to recipient, in USDC
-        uint256 USDCFeeAmount = _USDCAmount * swapFee / SWAP_FEE_DENOMINATOR;
+        uint256 USDCFeeAmount = _USDCAmount - USDCAmountToDeposit;
         SafeTransferLib.safeTransfer(
             USDC, 
             feeRecipient,
@@ -195,10 +197,10 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         YUSDToken.mint(_recipient, YUSDAmount);
 
         // Update contract debt
-        YUSDContractDebt = YUSDContractDebt + YUSDAmount;
+        YUSDContractDebt = newDebtAmount;
 
         emit YUSDMinted(YUSDAmount, msg.sender, _recipient);
-        emit YUSDContractDebtChanged(YUSDContractDebt);
+        emit YUSDContractDebtChanged(newDebtAmount);
     }
 
     /** 
@@ -225,13 +227,13 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         // Amount of YUSD burned
         uint256 YUSDBurned = _YUSDAmount * swapFeeCompliment / SWAP_FEE_DENOMINATOR;
         USDCAmount = YUSDBurned / DECIMAL_CONVERSION;
-        require(YUSDBurned < YUSDContractDebt, "Burning more than the contract has in debt");
+        require(YUSDBurned <= YUSDContractDebt, "Burning more than the contract has in debt");
 
         // Burn the YUSD
         burner.burn(address(this), YUSDBurned);
 
         // Send fee to recipient, in YUSD
-        uint256 YUSDFeeAmount = _YUSDAmount * swapFee / SWAP_FEE_DENOMINATOR;
+        uint256 YUSDFeeAmount = _YUSDAmount - YUSDBurned;
         SafeTransferLib.safeTransfer(
             YUSDERC20,
             feeRecipient,
@@ -263,7 +265,7 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
      * @notice Sets new swap fee
      */
     function setFee(uint256 _newSwapFee) external override onlyOwner {
-        require(_newSwapFee <= SWAP_FEE_DENOMINATOR, "Swap fee invalid");
+        require(_newSwapFee <= MAX_SWAP_FEE, "Swap fee invalid");
         swapFee = _newSwapFee;
         swapFeeCompliment = SWAP_FEE_DENOMINATOR - _newSwapFee;
         emit NewFeeSet(_newSwapFee);
