@@ -124,6 +124,8 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
 
     event NewStrategySet(address _newStrategy);
 
+    constructor() initializer {}
+
     /**
      * @notice initializer function, sets all relevant parameters.
      */
@@ -134,7 +136,6 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
         require(_burner != address(0), "Nonzero burner");
         burner = IBurner(_burner);
 
-        require(OwnableUpgradeable(_strategy).owner() == address(this), "Not initialized or wrong owner of strategy");
         USDC.approve(_strategy, MAX_UINT);
         strategy = IStrategy(_strategy);
         emit NewStrategySet(_strategy);
@@ -301,8 +302,6 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
      * @notice Sets new strategy for USDC utilization
      */
     function setStrategy(address _newStrategy) external override onlyOwner {
-        require(OwnableUpgradeable(_newStrategy).owner() == address(this), "Not initialized or wrong owner of strategy");
-
         // Withdraw from old strategy
         uint256 totalHoldings = strategy.totalHoldings();
         strategy.withdraw(totalHoldings);

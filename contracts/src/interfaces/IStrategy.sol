@@ -7,7 +7,7 @@ pragma solidity 0.8.10;
 // from the PSM.
 // Deposit and withdraw functions must be onlyPSM. 
 interface IStrategy {
-    function deposit(uint256 _amount) external;
-    function withdraw(uint256 _amount) external;
+    function deposit(uint256 _depositAmount) external returns (uint256 _amount);
+    function withdraw(uint256 _withdrawAmount) external returns (uint256 _amount);
     function totalHoldings() external view returns (uint256 _amount);
 }
