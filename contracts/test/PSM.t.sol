@@ -9,6 +9,10 @@ import "src/PSM.sol";
 import "./TestERC20.sol";
 import "./Utils.sol";
 
+import "src/integrations/aUSDCPSMStrategy.sol";
+
+import "src/interfaces/IYetiVaultToken.sol";
+
 import "src/testContracts/TestStrategyDummy.sol";
 
 interface IYetiController {
@@ -545,6 +549,63 @@ contract PSMTest is DSTest {
         // Execute harvest, should revert 
         vm.expectRevert("Cannot mint more than PSM Debt limit");
         psm.harvest();
+    }
+
+    /// ===========================================
+    /// aUSDC PSM Strategy test
+    /// ===========================================
+    function testRealStrategyDeposit() public {
+        // Deploy new strategy and deploy
+        aUSDCPSMStrategy newStrategy = new aUSDCPSMStrategy(address(psm));
+
+        vm.startPrank(treasury);
+        psm.setStrategy(address(newStrategy));
+        vm.stopPrank();
+
+
+        // From USDC holder, mint in PSM
+        uint MINT_AMOUNT_USDC = 1000e6;
+        uint EXPECTED_MINT_AMOUNT_POST_FEE = MINT_AMOUNT_USDC * 99 / 100;
+        vm.startPrank(USDC_HOLDER);
+        USDC.approve(address(psm), MAX_UINT);
+        psm.mintYUSD(MINT_AMOUNT_USDC, MINT_RECIPIENT);
+        vm.stopPrank();
+
+        uint totalHoldings = newStrategy.totalHoldings();
+        assertTrue(totalHoldings <= 990e6+1e4);
+        assertTrue(totalHoldings >= 990e6-1e4);
+
+        vm.startPrank(MINT_RECIPIENT);
+        YUSD.approve(address(psm), MAX_UINT);
+        uint256 amountRedeemed = psm.redeemYUSD(100e18, MINT_RECIPIENT);
+        assertTrue(amountRedeemed <= 99e6+1e4);
+        assertTrue(amountRedeemed >= 99e6-1e4);
+        vm.stopPrank();
+
+        address YetiVaultaUSDCHolder = 0xAAAaaAaaAaDd4AA719f0CF8889298D13dC819A15;
+        vm.startPrank(YetiVaultaUSDCHolder);
+        IERC20 vaultToken = IERC20(0xAD69de0CE8aB50B729d3f798d7bC9ac7b4e79267);
+        vaultToken.transfer(address(newStrategy), 50e18);        
+        vm.stopPrank();
+
+        // Execute harvest
+        uint contractDebtBefore = psm.YUSDContractDebt();
+        uint feeRecipientBefore = YUSD.balanceOf(FEE_RECIPIENT);
+
+        psm.harvest();
+
+        uint contractDebtAfter = psm.YUSDContractDebt();
+        uint feeRecipientAfter = YUSD.balanceOf(FEE_RECIPIENT);
+        uint YIELD_AMOUNT_IN_YUSD = 50e18 * IYetiVaultToken(0xAD69de0CE8aB50B729d3f798d7bC9ac7b4e79267).underlyingPerReceipt() * 1e12 / 1e18;
+
+        // Harvest amount should equal discrepancy in debt
+        assertTrue(contractDebtBefore + YIELD_AMOUNT_IN_YUSD <= contractDebtAfter + 1e16);
+        assertTrue(contractDebtBefore + YIELD_AMOUNT_IN_YUSD >= contractDebtAfter - 1e16);
+        // And fee recipient should receive it 
+        assertTrue(feeRecipientBefore + YIELD_AMOUNT_IN_YUSD <= feeRecipientAfter + 1e16);
+        assertTrue(feeRecipientBefore + YIELD_AMOUNT_IN_YUSD >= feeRecipientAfter - 1e16);
+        
+
     }
 
 

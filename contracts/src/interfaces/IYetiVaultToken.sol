@@ -13,4 +13,7 @@ interface IYetiVaultToken {
         address _from,
         address _to
     ) external returns (uint256 underlyingTokens);
+    function withdraw(uint256 _amt) external returns (uint256 underlyingTokens);
+    function underlyingPerReceipt() external view returns (uint256);
+    function receiptPerUnderlying() external view returns (uint256);
 }

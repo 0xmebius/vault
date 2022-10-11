@@ -25,11 +25,13 @@ contract TestStrategyDummy is IStrategy, OwnableUpgradeable {
     /// Deposit USDC into the strategy from the PSM
     function deposit(uint256 _depositAmount) external override onlyOwner returns (uint256) {
         USDC.transferFrom(PSM, address(this), _depositAmount);
+        return _depositAmount;
     }
 
     /// Withdraw USDC from the strategy from the PSM
     function withdraw(uint256 _withdrawAmount) external override onlyOwner returns (uint256) {
         USDC.transfer(PSM, _withdrawAmount);
+        return _withdrawAmount;
     }
 
     /// Total amount of USDC the contract owns. 
