@@ -307,13 +307,21 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
 
         // Withdraw from old strategy
         uint256 totalHoldings = strategy.totalHoldings();
-        strategy.withdraw(totalHoldings);
+
+        // todo 
+        totalHoldings = 0;
+        
+        if (totalHoldings != 0) {
+            strategy.withdraw(totalHoldings);
+        }
         USDC.approve(address(strategy), 0);
 
         // Deposit into new strategy after approving USDC
         USDC.approve(_newStrategy, MAX_UINT);
         strategy = IStrategy(_newStrategy);
-        strategy.deposit(totalHoldings);
+        if (totalHoldings != 0) {
+            strategy.deposit(totalHoldings);
+        }
 
         emit NewStrategySet(_newStrategy);
     }
